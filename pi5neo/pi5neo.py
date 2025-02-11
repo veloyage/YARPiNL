@@ -76,8 +76,12 @@ class Pi5Neo:
             return True
         return False
 
-    def update_strip(self):
-        """Send the current state of the LED strip to the NeoPixels"""
+    def update_strip(self, sleep_duration=0.1):
+        """Send the current state of the LED strip to the NeoPixels
+         Parameters:
+        - sleep_duration (float): The duration (in seconds) to pause after sending the data.
+          If None, no delay is introduced.
+        """
         total_bytes = 0
         for i in range(self.num_leds):
             led = self.led_state[i]  # Get the color for each LED
@@ -86,4 +90,6 @@ class Pi5Neo:
                 self.raw_data[total_bytes] = bitstream[j]
                 total_bytes += 1
         self.send_spi_data()
-        time.sleep(0.1)  # Short delay to ensure data is sent
+
+        if sleep_duration is not None:
+            time.sleep(sleep_duration)
