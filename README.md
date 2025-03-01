@@ -38,6 +38,14 @@ pip install pi5neo
 
 Pi5Neo makes it straightforward to set up and control your NeoPixel strip. Here's a simple example:
 
+First: Enable SPI for the board:
+sudo raspi-config
+-> 3 Interface Options
+-> I4 SPI
+-> Yes
+
+Then:
+
 ```python
 from pi5neo import Pi5Neo
 
