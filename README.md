@@ -1,4 +1,5 @@
-# Pi5Neo
+# Yet another Raspberry Pi Neopixel Library
+Forked from Pi5Neo
 
 ### Simplifying NeoPixel LED Control on Raspberry Pi 5 via SPI (GPIO 10)
 
