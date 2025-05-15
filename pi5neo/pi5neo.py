@@ -2,27 +2,41 @@
 import spidev
 import time
 
-class LEDColor:
+class RGB:
     """Represents an RGB color for the NeoPixels"""
     def __init__(self, red=0, green=0, blue=0):
         self.red = red
         self.green = green
         self.blue = blue
+        
+class RGBW:
+    """Represents an RGBW color for the NeoPixels"""
+    def __init__(self, red=0, green=0, blue=0, white=0):
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.white = white
 
 class Pi5Neo:
-    def __init__(self, spi_device='/dev/spidev0.0', num_leds=10, spi_speed_khz=800):
+    def __init__(self, spi_device='/dev/spidev0.0', num_leds=10, spi_speed_khz=800, colors="RGB"):
         """Initialize the Pi5Neo class with SPI device, number of LEDs, and speed"""
         self.num_leds = num_leds
-        self.spi_speed = spi_speed_khz * 1024 * 8  # Convert kHz to bytes per second
+        self.spi_speed = spi_speed_khz * 1000 * 8  # Convert kHz to bytes per second
         self.spi = spidev.SpiDev()  # Create SPI device instance
-        self.raw_data = [0] * (self.num_leds * 24)  # Placeholder for raw data sent via SPI
-        self.led_state = [LEDColor()] * self.num_leds  # Initial state for each LED (off)
-
+        self.raw_data = [0] * (self.num_leds * 8 * len(colors) + 128)  # Placeholder for raw data sent via SPI
+        self.colors = colors
+        if colors == "RGB":
+            self.led_state = [RGB()] * self.num_leds  # Initial state for each LED (off)
+        elif colors == "RGBW":
+            self.led_state = [RGBW()] * self.num_leds  # Initial state for each LED (off)´
+        else:
+            print("Error: Unsupported color format: " + colors)
+            return False
         # Open the SPI device
         if self.open_spi_device(spi_device):
-            time.sleep(0.1)  # Short delay to ensure device is ready
+            time.sleep(0.01)  # Short delay to ensure device is ready
             self.clear_strip()  # Clear the strip on startup
-            self.update_strip()
+            #self.update_strip()
 
     def open_spi_device(self, device_path):
         """Open the SPI device with the provided path"""
@@ -30,7 +44,7 @@ class Pi5Neo:
             bus, device = map(int, device_path[-3:].split('.'))
             self.spi.open(bus, device)
             self.spi.max_speed_hz = self.spi_speed
-            print(f"Opened SPI device: {device_path}")
+            #print(f"Opened SPI device: {device_path}")
             return True
         except Exception as e:
             print(f"Failed to open SPI device: {e}")
@@ -50,7 +64,7 @@ class Pi5Neo:
         bitstream = [0xC0] * 8  # Initialize with LOW bits
         for i in range(8):
             if self.bitmask(byte, i):
-                bitstream[i] = 0xF8  # Set HIGH bits for '1'
+                bitstream[i] = 0xF8  # Set HIGH bits for '1' F8
         return bitstream
 
     def rgb_to_spi_bitstream(self, red, green, blue):
@@ -59,20 +73,36 @@ class Pi5Neo:
         red_bits = self.byte_to_bitstream(red)  # Then red
         blue_bits = self.byte_to_bitstream(blue)  # Then blue
         return green_bits + red_bits + blue_bits  # Concatenate GRB order
+        
+    def rgbw_to_spi_bitstream(self, red, green, blue, white):
+        """Convert RGBW values to the NeoPixel bitstream format for SPI"""
+        green_bits = self.byte_to_bitstream(green)  # Send green first
+        red_bits = self.byte_to_bitstream(red)  # Then red
+        blue_bits = self.byte_to_bitstream(blue)  # Then blue
+        white_bits = self.byte_to_bitstream(white)  # Then white
+        return green_bits + red_bits + blue_bits + white_bits  # Concatenate GRB order
 
     def clear_strip(self):
         """Turn off all LEDs on the strip"""
-        self.fill_strip(0, 0, 0)
+        self.fill_strip((0, 0, 0))
 
-    def fill_strip(self, red=0, green=0, blue=0):
+    def fill_strip(self, color_tuple):
         """Fill the entire strip with a specific color"""
-        color = LEDColor(red, green, blue)
+        if self.colors == "RGB":
+            color = RGB(color_tuple[0], color_tuple[1], color_tuple[2])
+        elif self.colors == "RGBW":
+            if len(color_tuple) == 3:
+                color_tuple = color_tuple + (0,)
+            color = RGBW(color_tuple[0], color_tuple[1], color_tuple[2], color_tuple[3])
         self.led_state = [color] * self.num_leds  # Set all LEDs to the same color
 
-    def set_led_color(self, index, red, green, blue):
+    def set_led_color(self, index, color_tuple):
         """Set the color of an individual LED"""
         if 0 <= index < self.num_leds:
-            self.led_state[index] = LEDColor(red, green, blue)
+            if self.colors == "RGB":
+                self.led_state[index] = RGB(color_tuple[0], color_tuple[1], color_tuple[2])
+            elif self.colors == "RGBW":
+                self.led_state[index] = RGBW(color_tuple[0], color_tuple[1], color_tuple[2], color_tuple[3])
             return True
         return False
 
@@ -82,11 +112,14 @@ class Pi5Neo:
         - sleep_duration (float): The duration (in seconds) to pause after sending the data.
           If None, no delay is introduced.
         """
-        total_bytes = 0
+        total_bytes = 64
         for i in range(self.num_leds):
             led = self.led_state[i]  # Get the color for each LED
-            bitstream = self.rgb_to_spi_bitstream(led.red, led.green, led.blue)
-            for j in range(24):
+            if self.colors == "RGB":
+                bitstream = self.rgb_to_spi_bitstream(led.red, led.green, led.blue)
+            elif self.colors == "RGBW":
+                bitstream = self.rgbw_to_spi_bitstream(led.red, led.green, led.blue, led.white)
+            for j in range(8 * len(self.colors)):
                 self.raw_data[total_bytes] = bitstream[j]
                 total_bytes += 1
         self.send_spi_data()
